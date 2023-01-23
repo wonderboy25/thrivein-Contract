@@ -1,5 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{UnorderedMap};
+use near_sdk::json_types::{U128, U64};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
     env, near_bindgen, serde_json::json, AccountId, Balance, Promise,
@@ -33,7 +34,7 @@ pub enum ProjectState {
 pub struct schedule {
     pub shortCode: String,
     pub description: String,
-    pub value: u128,
+    pub value: U128,
     pub scheduleState : ScheduleState,
 }
 
@@ -63,11 +64,11 @@ impl Contract {
         owner_id: AccountId,
         treasury_id: AccountId,
     ) -> Self {
-        let mut this = Self {
+        let this = Self {
             owner_id: owner_id.into(),
             treasury_id: treasury_id.into(),
-            freelancerAddress: env::predecessor_account_id(),   
-            clientAddress: env::predecessor_account_id(),
+            freelancerAddress: env::predecessor_account_id(),
+            clientAddress: env::predecessor_account_id(), // env::current_account_id()
             scheduleRegister: UnorderedMap::new(StorageKey::Schedules),
             projectState: ProjectState::initiated,
             totalSchedules: 0,
@@ -93,7 +94,7 @@ impl Contract {
         &mut self,
         _shortCode: String,
         _description: String,
-        _value: u128,
+        _value: U128,
     ) {
         self.assert_project_state(ProjectState::initiated);
         self.assert_freelancer();
@@ -104,7 +105,7 @@ impl Contract {
                 shortCode: _shortCode.clone().into(),
                 description: _description.into(),
                 scheduleState: ScheduleState::planned,
-                value: _value.clone().into(),
+                value: _value.clone(),
             },
         );
 
@@ -162,20 +163,20 @@ impl Contract {
     #[payable]
     pub fn fundTask(
         &mut self,
-        _scheduleID: u64,
+        _scheduleID: U64,
     ) {
         self.assert_project_state(ProjectState::accepted);
-        self.assert_schedule_state(ScheduleState::planned, _scheduleID);
-        self.assert_ample_funding(env::attached_deposit() * (10_000 as u128 - self.clientFee as u128)/ 10_000u128, _scheduleID);
+        self.assert_schedule_state(ScheduleState::planned, _scheduleID.0);
+        self.assert_ample_funding(env::attached_deposit() * (10_000 as u128 - self.clientFee as u128)/ 10_000u128, _scheduleID.0);
         self.assert_client();
 
         let mut schedule_data = self
             .scheduleRegister
-            .get(&_scheduleID)
+            .get(&_scheduleID.0)
             .expect("Error: Schedule does not exist");
 
         schedule_data.scheduleState = ScheduleState::funded;
-        self.scheduleRegister.insert(&_scheduleID, &schedule_data);
+        self.scheduleRegister.insert(&_scheduleID.0, &schedule_data);
 
         env::log_str(
             &json!({
@@ -191,19 +192,19 @@ impl Contract {
     #[payable]
     pub fn startTask(
         &mut self,
-        _scheduleID: u64,
+        _scheduleID: U64,
     ) {
         self.assert_project_state(ProjectState::accepted);
-        self.assert_schedule_state(ScheduleState::funded, _scheduleID);
+        self.assert_schedule_state(ScheduleState::funded, _scheduleID.0);
         self.assert_freelancer();
 
         let mut schedule_data = self
             .scheduleRegister
-            .get(&_scheduleID)
+            .get(&_scheduleID.0)
             .expect("Error: Schedule does not exist");
 
         schedule_data.scheduleState = ScheduleState::started;
-        self.scheduleRegister.insert(&_scheduleID, &schedule_data);
+        self.scheduleRegister.insert(&_scheduleID.0, &schedule_data);
 
         env::log_str(
             &json!({
@@ -219,19 +220,19 @@ impl Contract {
     #[payable]
     pub fn approveTask(
         &mut self,
-        _scheduleID: u64,
+        _scheduleID: U64,
     ) {
         self.assert_project_state(ProjectState::accepted);
-        self.assert_schedule_state(ScheduleState::started, _scheduleID);
+        self.assert_schedule_state(ScheduleState::started, _scheduleID.0);
         self.assert_client();
 
         let mut schedule_data = self
             .scheduleRegister
-            .get(&_scheduleID)
+            .get(&_scheduleID.0)
             .expect("Error: Schedule does not exist");
 
         schedule_data.scheduleState = ScheduleState::approved;
-        self.scheduleRegister.insert(&_scheduleID, &schedule_data);
+        self.scheduleRegister.insert(&_scheduleID.0, &schedule_data);
 
         env::log_str(
             &json!({
@@ -247,24 +248,24 @@ impl Contract {
     #[payable]
     pub fn releaseFunds(
         &mut self,
-        _scheduleID: u64,
+        _scheduleID: U64,
     ) {
         self.assert_project_state(ProjectState::accepted);
-        self.assert_schedule_state(ScheduleState::approved, _scheduleID);
+        self.assert_schedule_state(ScheduleState::approved, _scheduleID.0);
         self.assert_freelancer();
 
         let mut schedule_data = self
             .scheduleRegister
-            .get(&_scheduleID)
+            .get(&_scheduleID.0)
             .expect("Error: Schedule does not exist");
         //send released funds to freelancer
-        Promise::new(self.freelancerAddress.clone()).transfer(schedule_data.value * (10_000 as u128 - self.freelancerFee as u128)/ 10_000u128);
+        Promise::new(self.freelancerAddress.clone()).transfer(schedule_data.value.0 * (10_000 as u128 - self.freelancerFee as u128)/ 10_000u128);
         //send extra funds to treasury account
         let extra_funds = env::storage_usage() as u128 * env::storage_byte_cost();
         Promise::new(self.treasury_id.clone()).transfer(env::account_balance() - extra_funds);
 
         schedule_data.scheduleState = ScheduleState::released;
-        self.scheduleRegister.insert(&_scheduleID, &schedule_data);
+        self.scheduleRegister.insert(&_scheduleID.0, &schedule_data);
 
         env::log_str(
             &json!({
@@ -275,6 +276,27 @@ impl Contract {
             })
             .to_string(),
         );
+    }
+
+    pub fn getScheduleSupply(&self) -> u64 {
+        self.scheduleRegister.len()
+    }
+
+    pub fn getSchedule(&self, _scheduleID: U64) -> schedule {
+        let schedule_data = self
+            .scheduleRegister
+            .get(&_scheduleID.0)
+            .expect("Error: Schedule does not exist");
+
+        schedule_data
+    }
+
+    pub fn getFreelancerAddress(&self) -> AccountId {
+        self.freelancerAddress.clone()
+    }
+
+    pub fn getClientAddress(&self) -> AccountId {
+        self.clientAddress.clone()
     }
 
     pub fn getBalance() -> Balance {
@@ -300,6 +322,11 @@ impl Contract {
     }
 
     fn assert_client(&self) {
+        assert!(
+            self.clientAddress != env::predecessor_account_id(),
+            "Error: Client is not defined"
+        );
+
         assert_eq!(
             env::predecessor_account_id(),
             self.clientAddress,
@@ -308,6 +335,11 @@ impl Contract {
     }
 
     fn assert_clientorfreelancer(&self) {
+        assert!(
+            self.clientAddress != env::predecessor_account_id(),
+            "Error: Client is not defined"
+        );
+
         assert!(
             self.clientAddress == env::predecessor_account_id() || self.freelancerAddress == env::predecessor_account_id() ,
             "Error: Only Freelancer or Client"
@@ -344,7 +376,7 @@ impl Contract {
             .expect("Error: Schedule does not exist");
 
         assert!(
-            _funding >= schedule_data.value,
+            _funding >= schedule_data.value.0,
             "Error: Less money"
         );
     }
