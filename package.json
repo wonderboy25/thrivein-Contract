@@ -4,7 +4,7 @@
   "description": "",
   "main": "compile.js",
   "scripts": {
-	  "build:rs": "node build.sh",
+    "build:rs": "node build.sh",
     "build": "node compile.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

@@ -1,16 +1,16 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LookupMap, UnorderedMap, UnorderedSet};
-use near_sdk::json_types::{U128, U64};
+use near_sdk::collections::{UnorderedMap};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
-    assert_one_yocto, env, ext_contract, near_bindgen, serde_json::json, AccountId, Balance,
-    BorshStorageKey, CryptoHash, Gas, PanicOnDefault, Promise, Timestamp,
+    env, near_bindgen, serde_json::json, AccountId, Balance, Promise,
+    BorshStorageKey, PanicOnDefault, 
 };
-use near_sdk::{is_promise_success, promise_result_as_success};
-use std::collections::HashMap;
 
 const MAX_DIFF: Balance = 1 * 10u128.pow(24);
-#[derive(BorshStorageKey, BorshSerialize)]
+
+#[derive(BorshStorageKey, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(PartialEq)]
+#[serde(crate = "near_sdk::serde")]
 pub enum ScheduleState {
     planned,
     funded,
@@ -19,7 +19,9 @@ pub enum ScheduleState {
     released
 }
 
-#[derive(BorshStorageKey, BorshSerialize)]
+#[derive(BorshStorageKey, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(PartialEq)]
+#[serde(crate = "near_sdk::serde")]
 pub enum ProjectState {
     initiated,
     accepted,
@@ -62,7 +64,7 @@ impl Contract {
         treasury_id: AccountId,
     ) -> Self {
         let mut this = Self {
-            owner_id: owner_id.into()
+            owner_id: owner_id.into(),
             treasury_id: treasury_id.into(),
             freelancerAddress: env::predecessor_account_id(),   
             clientAddress: env::predecessor_account_id(),
@@ -93,16 +95,16 @@ impl Contract {
         _description: String,
         _value: u128,
     ) {
-        assert_project_state(ProjectState::initiated);
-        assert_freelancer();
+        self.assert_project_state(ProjectState::initiated);
+        self.assert_freelancer();
 
-        self.offers.insert(
+        self.scheduleRegister.insert(
             &(self.totalSchedules + 1),
             &schedule {
-                buyer_id: _shortCode.clone().into(),
-                nft_contract_id: _description.into(),
-                scheduleState: ScheduleState::planned
-                price: _value.clone().into(),
+                shortCode: _shortCode.clone().into(),
+                description: _description.into(),
+                scheduleState: ScheduleState::planned,
+                value: _value.clone().into(),
             },
         );
 
@@ -122,7 +124,7 @@ impl Contract {
     pub fn acceptProject(
         &mut self,
     ) {
-        assert_project_state(ProjectState::initiated);
+        self.assert_project_state(ProjectState::initiated);
 
         self.clientAddress = env::predecessor_account_id();
         self.projectState = ProjectState::accepted;
@@ -142,8 +144,8 @@ impl Contract {
     pub fn endProject(
         &mut self,
     ) {
-        assert_clientorfreelancer();
-        assert_nomore_funds();
+        self.assert_clientorfreelancer();
+        self.assert_nomore_funds();
         self.projectState = ProjectState::closed;
         env::log_str(
             &json!({
@@ -162,10 +164,10 @@ impl Contract {
         &mut self,
         _scheduleID: u64,
     ) {
-        assert_project_state(ProjectState::accepted);
-        assert_schedule_state(ScheduleState::planned, _scheduleID);
-        assert_ample_funding(env::attached_deposit() * (10_000 as u128 - self.clientFee as u128)/ 10_000u128, _scheduleID);
-        assert_client();
+        self.assert_project_state(ProjectState::accepted);
+        self.assert_schedule_state(ScheduleState::planned, _scheduleID);
+        self.assert_ample_funding(env::attached_deposit() * (10_000 as u128 - self.clientFee as u128)/ 10_000u128, _scheduleID);
+        self.assert_client();
 
         let mut schedule_data = self
             .scheduleRegister
@@ -191,9 +193,9 @@ impl Contract {
         &mut self,
         _scheduleID: u64,
     ) {
-        assert_project_state(ProjectState::accepted);
-        assert_schedule_state(ScheduleState::funded, _scheduleID);
-        assert_freelancer();
+        self.assert_project_state(ProjectState::accepted);
+        self.assert_schedule_state(ScheduleState::funded, _scheduleID);
+        self.assert_freelancer();
 
         let mut schedule_data = self
             .scheduleRegister
@@ -219,9 +221,9 @@ impl Contract {
         &mut self,
         _scheduleID: u64,
     ) {
-        assert_project_state(ProjectState::accepted);
-        assert_schedule_state(ScheduleState::started, _scheduleID);
-        assert_client();
+        self.assert_project_state(ProjectState::accepted);
+        self.assert_schedule_state(ScheduleState::started, _scheduleID);
+        self.assert_client();
 
         let mut schedule_data = self
             .scheduleRegister
@@ -247,9 +249,9 @@ impl Contract {
         &mut self,
         _scheduleID: u64,
     ) {
-        assert_project_state(ProjectState::accepted);
-        assert_schedule_state(ScheduleState::approved, _scheduleID);
-        assert_freelancer();
+        self.assert_project_state(ProjectState::accepted);
+        self.assert_schedule_state(ScheduleState::approved, _scheduleID);
+        self.assert_freelancer();
 
         let mut schedule_data = self
             .scheduleRegister
@@ -258,7 +260,8 @@ impl Contract {
         //send released funds to freelancer
         Promise::new(self.freelancerAddress.clone()).transfer(schedule_data.value * (10_000 as u128 - self.freelancerFee as u128)/ 10_000u128);
         //send extra funds to treasury account
-        Promise::new(self.treasury_id.clone()).transfer(env::account_balance() - env::storage_usage() * env::storage_byte_cost());
+        let extra_funds = env::storage_usage() as u128 * env::storage_byte_cost();
+        Promise::new(self.treasury_id.clone()).transfer(env::account_balance() - extra_funds);
 
         schedule_data.scheduleState = ScheduleState::released;
         self.scheduleRegister.insert(&_scheduleID, &schedule_data);
@@ -275,7 +278,7 @@ impl Contract {
     }
 
     pub fn getBalance() -> Balance {
-        env::account_balance() - env::storage_usage() * env::storage_byte_cost()
+        env::account_balance() - env::storage_usage() as u128 * env::storage_byte_cost()
     }
 
     // private fn
@@ -329,7 +332,7 @@ impl Contract {
             .expect("Error: Schedule does not exist");
 
         assert!(
-            schedule_data.scheduleState == _state
+            schedule_data.scheduleState == _state,
             "Error: Only selected Schedule"
         );
     }
@@ -348,7 +351,7 @@ impl Contract {
 
     fn assert_nomore_funds(&self) {
         assert!(
-            MAX_DIFF >= env::account_balance() - env::storage_usage() * env::storage_byte_cost(),
+            MAX_DIFF >= env::account_balance() - env::storage_usage() as u128 * env::storage_byte_cost(),
             "Error: No more funds"
         );
     }
