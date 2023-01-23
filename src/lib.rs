@@ -135,6 +135,12 @@ impl Contract {
     pub fn acceptProject(
         &mut self,
     ) {
+        
+        assert!(
+            self.clientAddress != env::current_account_id(),
+            "Error: Client can't be same as contract address"
+        );
+
         self.assert_project_state(ProjectState::initiated);
 
         self.clientAddress = env::predecessor_account_id();
@@ -337,8 +343,8 @@ impl Contract {
 
     fn assert_client(&self) {
         assert!(
-            self.clientAddress != env::predecessor_account_id(),
-            "Error: Client is not defined"
+            self.clientAddress != env::current_account_id(),
+            "Error: Client can't be same as contract address"
         );
 
         assert_eq!(
@@ -350,7 +356,7 @@ impl Contract {
 
     fn assert_clientorfreelancer(&self) {
         assert!(
-            self.clientAddress != env::predecessor_account_id(),
+            self.clientAddress != env::current_account_id(),
             "Error: Client is not defined"
         );
 
