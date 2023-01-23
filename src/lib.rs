@@ -97,9 +97,9 @@ impl Contract {
     ) {
         self.assert_project_state(ProjectState::initiated);
         self.assert_freelancer();
-
+        self.totalSchedules += 1;
         self.scheduleRegister.insert(
-            &(self.totalSchedules + 1),
+            &(self.totalSchedules),
             &schedule {
                 shortCode: _shortCode.clone().into(),
                 description: _description.into(),
