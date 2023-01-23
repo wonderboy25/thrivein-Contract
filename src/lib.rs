@@ -29,6 +29,16 @@ pub enum ProjectState {
     closed
 }
 
+impl ProjectState {
+    pub fn to_text(&self) -> String {
+        match self {
+            ProjectState::initiated => "initiated".to_string(),
+            ProjectState::accepted => "accepted".to_string(),
+            ProjectState::closed => "closed".to_string(),
+        }
+    }
+}
+
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct schedule {
@@ -297,6 +307,10 @@ impl Contract {
 
     pub fn getClientAddress(&self) -> AccountId {
         self.clientAddress.clone()
+    }
+
+    pub fn getProjectState(&self) -> String {
+        self.projectState.to_text()
     }
 
     pub fn getBalance() -> Balance {
