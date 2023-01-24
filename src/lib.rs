@@ -102,7 +102,7 @@ impl Contract {
     pub fn set_freelancer_id(&mut self, freelancer_id: AccountId) {
         self.assert_owner();
         assert!(
-            self.freelancerAddress != env::current_account_id(),
+            freelancer_id.clone() != env::current_account_id(),
             "Error: Freelancer can't be same as contract address"
         );
         self.freelancerAddress = freelancer_id;
