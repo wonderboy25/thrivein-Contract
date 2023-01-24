@@ -97,6 +97,17 @@ impl Contract {
         self.treasury_id = treasury_id;
     }
 
+    // Setting freelancer address
+    #[payable]
+    pub fn set_freelancer_id(&mut self, freelancer_id: AccountId) {
+        self.assert_owner();
+        assert!(
+            self.freelancerAddress != env::current_account_id(),
+            "Error: Freelancer can't be same as contract address"
+        );
+        self.freelancerAddress = freelancer_id;
+    }
+
     //Add schedule
 
     #[payable]
@@ -334,6 +345,10 @@ impl Contract {
     }
 
     fn assert_freelancer(&self) {
+        assert!(
+            self.freelancerAddress != env::current_account_id(),
+            "Error: Freelancer can't be same as contract address"
+        );
         assert_eq!(
             env::predecessor_account_id(),
             self.freelancerAddress,
@@ -358,6 +373,11 @@ impl Contract {
         assert!(
             self.clientAddress != env::current_account_id(),
             "Error: Client is not defined"
+        );
+
+        assert!(
+            self.freelancerAddress != env::current_account_id(),
+            "Error: Freelancer can't be same as contract address"
         );
 
         assert!(
