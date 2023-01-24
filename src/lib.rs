@@ -148,7 +148,7 @@ impl Contract {
     ) {
         
         assert!(
-            self.clientAddress != env::current_account_id(),
+            env::predecessor_account_id() != env::current_account_id(),
             "Error: Client can't be same as contract address"
         );
 
